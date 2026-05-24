@@ -1235,8 +1235,17 @@ const CHARS_PER_TOKEN = 4;
 const DEFAULT_PREFILL_TOK_PER_SEC = 300;
 
 /** Hard ceiling for when we refuse to send the call. Leaves ~15s of
- * generation headroom inside the ~60s MCP-client request-timeout budget. */
-const PREFILL_REFUSE_THRESHOLD_SEC = 45;
+ * generation headroom inside the ~60s MCP-client request-timeout budget.
+ * Override via HOUTINI_LM_PREFILL_THRESHOLD_SEC env var. Set to 0 to force
+ * refusal on every call (useful for testing the bypass flags). */
+const PREFILL_REFUSE_THRESHOLD_SEC = process.env.HOUTINI_LM_PREFILL_THRESHOLD_SEC !== undefined
+  ? parseFloat(process.env.HOUTINI_LM_PREFILL_THRESHOLD_SEC)
+  : 45;
+
+/** Skip the preflight check entirely. Set HOUTINI_LM_SKIP_PREFLIGHT=1 or
+ * pass skip_preflight: true per-call when the estimator is being overly
+ * conservative (e.g. stale cache data from a prior slow cold-start call). */
+const SKIP_PREFLIGHT_GLOBAL = process.env.HOUTINI_LM_SKIP_PREFLIGHT === '1';
 
 /** Soft warning threshold — we proceed but log a stderr warning. */
 const PREFILL_WARN_THRESHOLD_SEC = 25;
@@ -1712,6 +1721,10 @@ const TOOLS = [
           type: 'string',
           description: 'Optional: pin to a specific model id. When set, overrides automatic routing.',
         },
+        skip_preflight: {
+          type: 'boolean',
+          description: 'Skip the pre-flight prefill estimate check. Use when the estimator is being overly conservative due to stale cache data from a prior slow call. Also controllable server-wide via the HOUTINI_LM_SKIP_PREFLIGHT=1 env var.',
+        },
       },
       required: ['paths', 'task'],
     },
@@ -2023,12 +2036,13 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       case 'code_task_files': {
-        const { paths, task, language, max_tokens: codeMaxTokens, model } = args as {
+        const { paths, task, language, max_tokens: codeMaxTokens, model, skip_preflight } = args as {
           paths: string[];
           task: string;
           language?: string;
           max_tokens?: number;
           model?: string;
+          skip_preflight?: boolean;
         };
 
         const loaded = await loadFiles(paths);
@@ -2053,28 +2067,41 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         // Separates fixed per-request overhead from per-token prefill cost and
         // avoids the under-prediction a ratio-of-averages produces on inputs
         // much larger than the historical mean.
-        const estimate = await estimatePrefill(combined.length, route.modelId);
-        const isConfidentEstimate = estimate.basis === 'linear-fit' || estimate.basis === 'ratio';
-        if (isConfidentEstimate && estimate.estimatedSeconds > PREFILL_REFUSE_THRESHOLD_SEC) {
-          const estSec = Math.round(estimate.estimatedSeconds);
-          const basisLine = estimate.basis === 'linear-fit'
-            ? `• Estimator: linear fit — TTFT ≈ ${Math.round(estimate.fit!.alphaMs)}ms + ${estimate.fit!.betaMsPerToken.toFixed(2)}ms/token (n=${estimate.fit!.n}, R²=${estimate.fit!.r2.toFixed(2)})`
-            : `• Estimator: ratio fallback — ~${Math.round(estimate.prefillTokPerSec!)} tok/s (from ${lifetime.modelStats.get(route.modelId)?.ttftCalls ?? 0} prior calls; less accurate for inputs far from the historical mean)`;
+        //
+        // Bypass: pass skip_preflight: true per-call, or set the
+        // HOUTINI_LM_SKIP_PREFLIGHT=1 env var to skip for all calls.
+        // HOUTINI_LM_PREFILL_THRESHOLD_SEC=0 forces refusal (testing only).
+        const skipPreflight = SKIP_PREFLIGHT_GLOBAL || skip_preflight === true;
+        const estimate = skipPreflight ? null : await estimatePrefill(combined.length, route.modelId);
+        const forceRefuse = !skipPreflight && PREFILL_REFUSE_THRESHOLD_SEC === 0;
+        const isConfidentEstimate = estimate !== null && (estimate.basis === 'linear-fit' || estimate.basis === 'ratio');
+        if (forceRefuse || (isConfidentEstimate && estimate!.estimatedSeconds > PREFILL_REFUSE_THRESHOLD_SEC)) {
+          // estimate is non-null here: forceRefuse implies skipPreflight=false → estimate was computed
+          const est = estimate!;
+          const estSec = forceRefuse ? 0 : Math.round(est.estimatedSeconds);
+          const basisLine = forceRefuse
+            ? `• Estimator: bypassed (HOUTINI_LM_PREFILL_THRESHOLD_SEC=0)`
+            : est.basis === 'linear-fit'
+              ? `• Estimator: linear fit — TTFT ≈ ${Math.round(est.fit!.alphaMs)}ms + ${est.fit!.betaMsPerToken.toFixed(2)}ms/token (n=${est.fit!.n}, R²=${est.fit!.r2.toFixed(2)})`
+              : `• Estimator: ratio fallback — ~${Math.round(est.prefillTokPerSec!)} tok/s (from ${lifetime.modelStats.get(route.modelId)?.ttftCalls ?? 0} prior calls; less accurate for inputs far from the historical mean)`;
+          const inputLine = forceRefuse
+            ? `• Input size: ~${Math.ceil(combined.length / 4).toLocaleString()} tokens across ${successCount} file(s)`
+            : `• Input size: ~${est.inputTokens.toLocaleString()} tokens across ${successCount} file(s)`;
           return {
             content: [{
               type: 'text',
               text:
                 `Error: estimated prefill time exceeds the ~60s MCP client timeout.\n\n` +
-                `• Input size: ~${estimate.inputTokens.toLocaleString()} tokens across ${successCount} file(s)\n` +
+                `${inputLine}\n` +
                 `${basisLine}\n` +
                 `• Estimated prefill: ~${estSec}s (threshold: ${PREFILL_REFUSE_THRESHOLD_SEC}s)\n\n` +
                 `Options: split the files into smaller groups, trim the largest file, or use \`code_task\` with a focused excerpt. ` +
-                `If you know this workstation can handle it, pass fewer files or run the task again when the measured rate improves.`,
+                `To override the estimator, pass skip_preflight: true or set HOUTINI_LM_SKIP_PREFLIGHT=1.`,
             }],
             isError: true,
           };
         }
-        if (estimate.estimatedSeconds > PREFILL_WARN_THRESHOLD_SEC) {
+        if (estimate !== null && estimate.estimatedSeconds > PREFILL_WARN_THRESHOLD_SEC) {
           const basisDetail = estimate.basis === 'linear-fit'
             ? `linear-fit n=${estimate.fit!.n} R²=${estimate.fit!.r2.toFixed(2)}`
             : estimate.basis;
