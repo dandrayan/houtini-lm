@@ -53,10 +53,10 @@ const HOUTINI_LM_PROVIDER = (process.env.HOUTINI_LM_PROVIDER || '').toLowerCase(
 const DEFAULT_MAX_TOKENS = 16384;             // fallback when model context is unknown — overridden by dynamic calculation below
 const DEFAULT_TEMPERATURE = 0.3;
 const CONNECT_TIMEOUT_MS = 5000;
-const INFERENCE_CONNECT_TIMEOUT_MS = 180_000; // wait for response headers — on large inputs LM Studio may hold headers until first token is ready
+const INFERENCE_CONNECT_TIMEOUT_MS = 600_000; // wait for response headers — on large inputs LM Studio may hold headers until first token is ready
 const SOFT_TIMEOUT_MS = 300_000;             // 5 min — progress notifications reset MCP client timeout, so this is a safety net not the primary limit
 const READ_CHUNK_TIMEOUT_MS = 30_000;        // max wait for a single SSE chunk mid-stream
-const PREFILL_TIMEOUT_MS = 180_000;          // max wait for the FIRST chunk — prompt prefill on slow hardware with big inputs can legitimately take 1-2 min
+const PREFILL_TIMEOUT_MS = 300_000;          // max wait for the FIRST chunk — prompt prefill on slow hardware with big inputs can legitimately take 1-2 min
 const PREFILL_KEEPALIVE_MS = 10_000;         // fire a progress notification every N ms while waiting for prefill to finish
 const FALLBACK_CONTEXT_LENGTH = parseInt(
   process.env.HOUTINI_LM_CONTEXT_WINDOW || process.env.LM_CONTEXT_WINDOW || '100000',
@@ -761,6 +761,12 @@ async function chatCompletionStreamingInner(
     }
   }
 
+  // Manual override: force enable_thinking:false without inflating max_tokens.
+  // Useful for models that support the toggle but aren't yet auto-detected.
+  if (DISABLE_THINKING) {
+    body.enable_thinking = false;
+  }
+
   const startTime = Date.now();
 
   // Progress-notification plumbing lifted ABOVE the fetch so we can keep the
@@ -1253,6 +1259,12 @@ const SKIP_PREFLIGHT_GLOBAL = process.env.HOUTINI_LM_SKIP_PREFLIGHT === '1';
  * doesn't want the footer metadata mixed into its context. Stats are still
  * accumulated and available via the `stats` tool. */
 const QUIET_MODE = process.env.HOUTINI_LM_QUIET === '1';
+
+/** Force enable_thinking:false on every request regardless of model
+ * auto-detection. Use when evaluating a model that supports the toggle
+ * but isn't yet in the thinking-detection database (e.g. new Qwen3
+ * variants). Does NOT inflate max_tokens — thinking is assumed to be off. */
+const DISABLE_THINKING = process.env.HOUTINI_LM_DISABLE_THINKING === '1';
 
 /** Soft warning threshold — we proceed but log a stderr warning. */
 const PREFILL_WARN_THRESHOLD_SEC = 25;
