@@ -193,8 +193,27 @@ try {
       paths: ['/some/absolute/path.ts'],
     });
     const text = res.content?.[0]?.text || '';
-    if (!res.isError || (!text.includes('context') && !text.includes('paths'))) {
-      throw new Error(`Expected mutual-exclusion error, got: ${text.slice(0, 200)}`);
+    if (!res.isError || !text.includes('context') || !text.includes('paths')) {
+      throw new Error(`Expected mutual-exclusion error mentioning both "context" and "paths", got: ${text.slice(0, 200)}`);
+    }
+  });
+
+  await test('chat: non-existent absolute path returns read error in response', async () => {
+    const res = await callTool('chat', {
+      message: 'summarize',
+      paths: ['/nonexistent/does-not-exist-houtini-test.ts'],
+    });
+    const text = res.content?.[0]?.text || '';
+    if (!res.isError) {
+      throw new Error(`Expected isError for unreadable file, got: ${text.slice(0, 200)}`);
+    }
+  });
+
+  await test('code_task_files: empty paths array returns validation error', async () => {
+    const res = await callTool('code_task_files', { paths: [], task: 'explain' });
+    const text = res.content?.[0]?.text || '';
+    if (!res.isError || !text.includes('paths')) {
+      throw new Error(`Expected isError with "paths" in message, got: ${text.slice(0, 200)}`);
     }
   });
 
@@ -239,4 +258,72 @@ try {
   server.kill();
 }
 
+// ── HOUTINI_LM_QUIET=1 tests (separate server, requires LLM) ────────────────
+console.log('--- quiet mode (HOUTINI_LM_QUIET=1) ---');
+
+function makeQuietClient(extraEnv = {}) {
+  const s = spawn(process.execPath, ['dist/index.js'], {
+    env: { ...process.env, ...extraEnv },
+    stdio: ['pipe', 'pipe', 'pipe'],
+  });
+  let buf = '';
+  const pending = new Map();
+  let nextId = 1;
+  s.stdout.on('data', (chunk) => {
+    buf += chunk.toString('utf8');
+    let idx;
+    while ((idx = buf.indexOf('\n')) >= 0) {
+      const line = buf.slice(0, idx).trim();
+      buf = buf.slice(idx + 1);
+      if (!line) continue;
+      try {
+        const msg = JSON.parse(line);
+        if (msg.id != null && pending.has(msg.id)) {
+          const { resolve, reject } = pending.get(msg.id);
+          pending.delete(msg.id);
+          if (msg.error) reject(new Error(JSON.stringify(msg.error)));
+          else resolve(msg.result);
+        }
+      } catch { /* ignore */ }
+    }
+  });
+  s.stderr.on('data', () => {});
+  function rpc(method, params) {
+    const id = nextId++;
+    return new Promise((resolve, reject) => {
+      pending.set(id, { resolve, reject });
+      s.stdin.write(JSON.stringify({ jsonrpc: '2.0', id, method, params }) + '\n');
+      setTimeout(() => { if (pending.has(id)) { pending.delete(id); reject(new Error(`RPC ${method} timed out`)); } }, 120_000);
+    });
+  }
+  return { server: s, callTool: (name, args) => rpc('tools/call', { name, arguments: args }), rpc };
+}
+
+const { server: quietServer, callTool: quietCall, rpc: quietRpc } = makeQuietClient({ HOUTINI_LM_QUIET: '1' });
+try {
+  await quietRpc('initialize', { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'quiet-test', version: '0' } });
+  await sleep(500);
+
+  await test('HOUTINI_LM_QUIET=1: chat response has no footer separator', async () => {
+    const res = await quietCall('chat', { message: 'Reply with just the word OK.', max_tokens: 64 });
+    const text = res.content?.[0]?.text || '';
+    if (res.isError) throw new Error(`Unexpected error: ${text.slice(0, 200)}`);
+    if (text.includes('\n---')) {
+      throw new Error(`Footer still present with HOUTINI_LM_QUIET=1: ${text.slice(-300)}`);
+    }
+  });
+
+  await test('HOUTINI_LM_QUIET=1: stats tool still accumulates data', async () => {
+    const res = await quietCall('stats', {});
+    const text = res.content?.[0]?.text || '';
+    if (res.isError) throw new Error(`stats tool error: ${text.slice(0, 200)}`);
+    // stats should reflect the chat call above — at minimum it should not be empty
+    if (text.length < 10) throw new Error(`stats output unexpectedly empty: ${text}`);
+  });
+
+} finally {
+  quietServer.kill();
+}
+
+console.log(`\n=== Final: ${passed} passed, ${failed} failed ===\n`);
 process.exit(failed > 0 ? 1 : 0);

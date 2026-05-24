@@ -1238,14 +1238,21 @@ const DEFAULT_PREFILL_TOK_PER_SEC = 300;
  * generation headroom inside the ~60s MCP-client request-timeout budget.
  * Override via HOUTINI_LM_PREFILL_THRESHOLD_SEC env var. Set to 0 to force
  * refusal on every call (useful for testing the bypass flags). */
-const PREFILL_REFUSE_THRESHOLD_SEC = process.env.HOUTINI_LM_PREFILL_THRESHOLD_SEC !== undefined
+const _rawThreshold = process.env.HOUTINI_LM_PREFILL_THRESHOLD_SEC !== undefined
   ? parseFloat(process.env.HOUTINI_LM_PREFILL_THRESHOLD_SEC)
-  : 45;
+  : NaN;
+const PREFILL_REFUSE_THRESHOLD_SEC = Number.isNaN(_rawThreshold) ? 45 : _rawThreshold;
 
 /** Skip the preflight check entirely. Set HOUTINI_LM_SKIP_PREFLIGHT=1 or
  * pass skip_preflight: true per-call when the estimator is being overly
  * conservative (e.g. stale cache data from a prior slow cold-start call). */
 const SKIP_PREFLIGHT_GLOBAL = process.env.HOUTINI_LM_SKIP_PREFLIGHT === '1';
+
+/** Suppress the stats/perf footer appended to every tool response. Useful
+ * when houtini-lm is used as a sub-tool by an orchestrating agent that
+ * doesn't want the footer metadata mixed into its context. Stats are still
+ * accumulated and available via the `stats` tool. */
+const QUIET_MODE = process.env.HOUTINI_LM_QUIET === '1';
 
 /** Soft warning threshold — we proceed but log a stderr warning. */
 const PREFILL_WARN_THRESHOLD_SEC = 25;
@@ -1467,6 +1474,7 @@ function formatQualityLine(quality: QualitySignal): string {
 function formatFooter(resp: StreamingResult, extra?: string): string {
   // Record usage for session tracking before formatting
   recordUsage(resp);
+  if (QUIET_MODE) return '';
 
   const parts: string[] = [];
   if (resp.model) parts.push(`Model: ${resp.model}`);
