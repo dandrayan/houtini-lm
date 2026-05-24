@@ -13,6 +13,9 @@
 
 import { spawn } from 'node:child_process';
 import { setTimeout as sleep } from 'node:timers/promises';
+import { writeFile, unlink } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 const server = spawn(process.execPath, ['dist/index.js'], {
   env: { ...process.env },
@@ -142,6 +145,93 @@ try {
     const t3 = r3.content?.[0]?.text || '';
     const hits = [t1.includes('20'), t2.includes('40'), t3.includes('60')].filter(Boolean).length;
     if (hits < 2) throw new Error(`Only ${hits}/3 parallel answers correct`);
+  });
+
+  // ── paths support ────────────────────────────────────────────────────────
+  // These tests run without a live LLM (schema + input validation).
+  // The functional tests at the bottom require a live endpoint.
+  console.log('\n--- paths support: schema ---');
+
+  await test('chat: schema includes paths property', async () => {
+    const res = await rpc('tools/list', {});
+    const chatTool = res.tools?.find(t => t.name === 'chat');
+    if (!chatTool?.inputSchema?.properties?.paths) {
+      throw new Error('chat schema missing paths property');
+    }
+  });
+
+  await test('custom_prompt: schema includes paths property', async () => {
+    const res = await rpc('tools/list', {});
+    const tool = res.tools?.find(t => t.name === 'custom_prompt');
+    if (!tool?.inputSchema?.properties?.paths) {
+      throw new Error('custom_prompt schema missing paths property');
+    }
+  });
+
+  console.log('\n--- paths support: input validation ---');
+
+  await test('chat: relative path returns absolute-path error', async () => {
+    const res = await callTool('chat', { message: 'test', paths: ['relative/path.ts'] });
+    const text = res.content?.[0]?.text || '';
+    if (!res.isError || !text.includes('absolute')) {
+      throw new Error(`Expected isError with "absolute" in message, got: ${text.slice(0, 200)}`);
+    }
+  });
+
+  await test('custom_prompt: relative path returns absolute-path error', async () => {
+    const res = await callTool('custom_prompt', { instruction: 'test', paths: ['relative/path.ts'] });
+    const text = res.content?.[0]?.text || '';
+    if (!res.isError || !text.includes('absolute')) {
+      throw new Error(`Expected isError with "absolute" in message, got: ${text.slice(0, 200)}`);
+    }
+  });
+
+  await test('custom_prompt: both context and paths returns mutual-exclusion error', async () => {
+    const res = await callTool('custom_prompt', {
+      instruction: 'test',
+      context: 'some context',
+      paths: ['/some/absolute/path.ts'],
+    });
+    const text = res.content?.[0]?.text || '';
+    if (!res.isError || (!text.includes('context') && !text.includes('paths'))) {
+      throw new Error(`Expected mutual-exclusion error, got: ${text.slice(0, 200)}`);
+    }
+  });
+
+  console.log('\n--- paths support: functional (requires LLM) ---');
+
+  await test('chat: paths appends file content to message', async () => {
+    const tmpPath = join(tmpdir(), `houtini-test-chat-${Date.now()}.txt`);
+    await writeFile(tmpPath, 'The secret code is ZETA77.\n');
+    try {
+      const res = await callTool('chat', {
+        message: 'What secret code is in the file? Reply with just the code, nothing else.',
+        paths: [tmpPath],
+        max_tokens: 64,
+      });
+      const text = res.content?.[0]?.text || '';
+      if (!text.includes('ZETA77')) throw new Error(`Expected ZETA77, got: ${text.slice(0, 300)}`);
+    } finally {
+      await unlink(tmpPath).catch(() => {});
+    }
+  });
+
+  await test('custom_prompt: paths loads file as context', async () => {
+    const tmpPath = join(tmpdir(), `houtini-test-cp-${Date.now()}.ts`);
+    await writeFile(tmpPath, 'function multiply(a: number, b: number): number { return a + b; }\n');
+    try {
+      const res = await callTool('custom_prompt', {
+        instruction: 'Is the multiply function correct? Reply YES or NO and one sentence.',
+        paths: [tmpPath],
+        max_tokens: 128,
+      });
+      const text = res.content?.[0]?.text || '';
+      if (!text.toUpperCase().includes('NO') && !text.toLowerCase().includes('add')) {
+        throw new Error(`Expected NO/add, got: ${text.slice(0, 300)}`);
+      }
+    } finally {
+      await unlink(tmpPath).catch(() => {});
+    }
   });
 
   console.log(`\n=== Results: ${passed} passed, ${failed} failed ===\n`);

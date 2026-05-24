@@ -1564,6 +1564,11 @@ const TOOLS = [
           type: 'string',
           description: 'Optional: pin to a specific model id (e.g. "nvidia/nemotron-3-nano-30b-a3b:free" on OpenRouter, "qwen.qwen3-coder-30b-a3b-instruct" on LM Studio). When set, overrides automatic routing. Useful on providers with many models where auto-routing picks poorly.',
         },
+        paths: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Absolute file paths whose contents are appended to the message before sending. Files are concatenated with `=== filename ===` headers. Relative paths are rejected — always pass absolute. Useful when keeping file source out of the Claude context window matters.',
+        },
       },
       required: ['message'],
     },
@@ -1593,7 +1598,12 @@ const TOOLS = [
         },
         context: {
           type: 'string',
-          description: 'The COMPLETE data to analyse. Full source code, full logs, full text. NEVER truncate.',
+          description: 'The COMPLETE data to analyse. Full source code, full logs, full text. NEVER truncate. Provide either context or paths, not both.',
+        },
+        paths: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Absolute file paths to use as context instead of the context field. Files are read and concatenated with `=== filename ===` headers. Relative paths are rejected — always pass absolute. Provide either context or paths, not both.',
         },
         instruction: {
           type: 'string',
@@ -1834,6 +1844,38 @@ server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
 
 server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: TOOLS }));
 
+type LoadFilesOk = { ok: true; combined: string; successCount: number; totalCount: number };
+type LoadFilesErr = { ok: false; content: [{ type: 'text'; text: string }]; isError: true };
+
+async function loadFiles(paths: string[]): Promise<LoadFilesOk | LoadFilesErr> {
+  if (!Array.isArray(paths) || paths.length === 0) {
+    return { ok: false, isError: true, content: [{ type: 'text', text: 'Error: paths must be a non-empty array of absolute file paths.' }] };
+  }
+  const relative = paths.filter((p) => typeof p !== 'string' || !isAbsolute(p));
+  if (relative.length > 0) {
+    return { ok: false, isError: true, content: [{ type: 'text', text: `Error: all paths must be absolute. Relative paths: ${JSON.stringify(relative)}` }] };
+  }
+  const reads = await Promise.allSettled(
+    paths.map(async (p) => ({ path: p, content: await readFile(p, 'utf8') })),
+  );
+  const sections: string[] = [];
+  let successCount = 0;
+  reads.forEach((r, i) => {
+    const p = paths[i];
+    if (r.status === 'fulfilled') {
+      successCount++;
+      sections.push(`=== ${basename(p)} (${p}) ===\n${r.value.content}`);
+    } else {
+      const reason = r.reason instanceof Error ? r.reason.message : String(r.reason);
+      sections.push(`=== ${basename(p)} (${p}) — READ FAILED ===\n[Could not read: ${reason}]`);
+    }
+  });
+  if (successCount === 0) {
+    return { ok: false, isError: true, content: [{ type: 'text', text: `Error: none of the ${paths.length} file(s) could be read. Check the paths and permissions.\n\n${sections.join('\n\n')}` }] };
+  }
+  return { ok: true, combined: sections.join('\n\n'), successCount, totalCount: paths.length };
+}
+
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args } = request.params;
   const progressToken = request.params._meta?.progressToken;
@@ -1841,14 +1883,22 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   try {
     switch (name) {
       case 'chat': {
-        const { message, system, temperature, max_tokens, json_schema, model } = args as {
+        const { message, system, temperature, max_tokens, json_schema, model, paths } = args as {
           message: string;
           system?: string;
           temperature?: number;
           max_tokens?: number;
           json_schema?: { name: string; schema: Record<string, unknown>; strict?: boolean };
           model?: string;
+          paths?: string[];
         };
+
+        let finalMessage = message;
+        if (paths && paths.length > 0) {
+          const loaded = await loadFiles(paths);
+          if (!loaded.ok) return { content: loaded.content, isError: loaded.isError };
+          finalMessage = `${message}\n\n${loaded.combined}`;
+        }
 
         const route = await routeToModel('chat', model);
         const messages: ChatMessage[] = [];
@@ -1857,7 +1907,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           ? (route.hints.outputConstraint ? `${system}\n\n${route.hints.outputConstraint}` : system)
           : (route.hints.outputConstraint || undefined);
         if (systemContent) messages.push({ role: 'system', content: systemContent });
-        messages.push({ role: 'user', content: message });
+        messages.push({ role: 'user', content: finalMessage });
 
         const responseFormat: ResponseFormat | undefined = json_schema
           ? { type: 'json_schema', json_schema: { name: json_schema.name, strict: json_schema.strict ?? true, schema: json_schema.schema } }
@@ -1876,15 +1926,27 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       case 'custom_prompt': {
-        const { system, context, instruction, temperature, max_tokens, json_schema, model } = args as {
+        const { system, context, paths, instruction, temperature, max_tokens, json_schema, model } = args as {
           system?: string;
           context?: string;
+          paths?: string[];
           instruction: string;
           temperature?: number;
           max_tokens?: number;
           json_schema?: { name: string; schema: Record<string, unknown>; strict?: boolean };
           model?: string;
         };
+
+        if (context && paths && paths.length > 0) {
+          return { content: [{ type: 'text', text: 'Error: provide either context or paths, not both.' }], isError: true };
+        }
+
+        let resolvedContext = context;
+        if (paths && paths.length > 0) {
+          const loaded = await loadFiles(paths);
+          if (!loaded.ok) return { content: loaded.content, isError: loaded.isError };
+          resolvedContext = loaded.combined;
+        }
 
         const route = await routeToModel('analysis', model);
         const messages: ChatMessage[] = [];
@@ -1896,8 +1958,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         // Multi-turn format prevents context bleed in smaller models.
         // Context goes in a separate user→assistant exchange so the model
         // "acknowledges" it before receiving the actual instruction.
-        if (context) {
-          messages.push({ role: 'user', content: `Here is the context for analysis:\n\n${context}` });
+        if (resolvedContext) {
+          messages.push({ role: 'user', content: `Here is the context for analysis:\n\n${resolvedContext}` });
           messages.push({ role: 'assistant', content: 'Understood. I have read the full context. What would you like me to do with it?' });
         }
         messages.push({ role: 'user', content: instruction });
@@ -1969,56 +2031,15 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           model?: string;
         };
 
-        if (!Array.isArray(paths) || paths.length === 0) {
-          return {
-            content: [{ type: 'text', text: 'Error: paths must be a non-empty array of absolute file paths.' }],
-            isError: true,
-          };
-        }
-
-        // Reject relative paths early — silent resolution against cwd is surprising.
-        const relative = paths.filter((p) => typeof p !== 'string' || !isAbsolute(p));
-        if (relative.length > 0) {
-          return {
-            content: [{ type: 'text', text: `Error: all paths must be absolute. Relative paths: ${JSON.stringify(relative)}` }],
-            isError: true,
-          };
-        }
-
-        // Read all files in parallel. One unreadable file doesn't sink the call —
-        // failures become inline error sections so the model can still reason about
-        // the rest of the bundle.
-        const reads = await Promise.allSettled(
-          paths.map(async (p) => ({ path: p, content: await readFile(p, 'utf8') })),
-        );
-
-        const sections: string[] = [];
-        let successCount = 0;
-        reads.forEach((r, i) => {
-          const p = paths[i];
-          if (r.status === 'fulfilled') {
-            successCount++;
-            sections.push(`=== ${basename(p)} (${p}) ===\n${r.value.content}`);
-          } else {
-            const reason = r.reason instanceof Error ? r.reason.message : String(r.reason);
-            sections.push(`=== ${basename(p)} (${p}) — READ FAILED ===\n[Could not read: ${reason}]`);
-          }
-        });
-
-        if (successCount === 0) {
-          return {
-            content: [{ type: 'text', text: `Error: none of the ${paths.length} file(s) could be read. Check the paths and permissions.\n\n${sections.join('\n\n')}` }],
-            isError: true,
-          };
-        }
+        const loaded = await loadFiles(paths);
+        if (!loaded.ok) return { content: loaded.content, isError: loaded.isError };
+        const { combined, successCount } = loaded;
 
         const lang = language || 'unknown';
         const route = await routeToModel('code', model);
         const outputConstraint = route.hints.outputConstraint
           ? ` ${route.hints.outputConstraint}`
           : '';
-
-        const combined = sections.join('\n\n');
 
         // Pre-flight prefill estimate. Huge inputs can legitimately exceed
         // the MCP client's ~60s request timeout during prompt processing, and
