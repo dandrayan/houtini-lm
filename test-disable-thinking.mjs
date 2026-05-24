@@ -153,12 +153,22 @@ try {
     }
   });
 
-  await test('HOUTINI_LM_DISABLE_THINKING=1: enable_thinking:false sent in chat', async () => {
+  await test('HOUTINI_LM_DISABLE_THINKING=1: enable_thinking:false sent at top level (Alibaba Cloud / direct)', async () => {
     await ct2('chat', { message: 'Say OK.', max_tokens: 16 });
     const body = mock.getLastBody();
     if (body == null) throw new Error('No request body captured');
     if (body.enable_thinking !== false) {
-      throw new Error(`Expected enable_thinking:false, got: ${JSON.stringify(body.enable_thinking)}`);
+      throw new Error(`Expected enable_thinking:false at top level, got: ${JSON.stringify(body.enable_thinking)}`);
+    }
+  });
+
+  await test('HOUTINI_LM_DISABLE_THINKING=1: chat_template_kwargs.enable_thinking:false sent (LM Studio / vLLM)', async () => {
+    await ct2('chat', { message: 'Say OK.', max_tokens: 16 });
+    const body = mock.getLastBody();
+    if (body == null) throw new Error('No request body captured');
+    const ctk = body.chat_template_kwargs;
+    if (!ctk || ctk.enable_thinking !== false) {
+      throw new Error(`Expected chat_template_kwargs.enable_thinking:false, got: ${JSON.stringify(ctk)}`);
     }
   });
 
@@ -168,6 +178,10 @@ try {
     if (body == null) throw new Error('No request body captured');
     if (body.enable_thinking !== false) {
       throw new Error(`Expected enable_thinking:false in code_task, got: ${JSON.stringify(body.enable_thinking)}`);
+    }
+    const ctk = body.chat_template_kwargs;
+    if (!ctk || ctk.enable_thinking !== false) {
+      throw new Error(`Expected chat_template_kwargs.enable_thinking:false in code_task, got: ${JSON.stringify(ctk)}`);
     }
   });
 

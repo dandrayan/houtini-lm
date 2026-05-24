@@ -747,6 +747,10 @@ async function chatCompletionStreamingInner(
     const thinking = await getThinkingSupport(modelId);
     if (thinking?.supportsThinkingToggle) {
       body.enable_thinking = false;
+      body.chat_template_kwargs = {
+        ...(body.chat_template_kwargs as Record<string, unknown> | undefined ?? {}),
+        enable_thinking: false,
+      };
       const reasoningValue = getReasoningEffortValue(modelId);
       if (reasoningValue !== null) {
         body.reasoning_effort = reasoningValue;
@@ -763,8 +767,14 @@ async function chatCompletionStreamingInner(
 
   // Manual override: force enable_thinking:false without inflating max_tokens.
   // Useful for models that support the toggle but aren't yet auto-detected.
+  // Send both forms: top-level (Alibaba Cloud / direct API) and nested under
+  // chat_template_kwargs (LM Studio / vLLM / SGLang).
   if (DISABLE_THINKING) {
     body.enable_thinking = false;
+    body.chat_template_kwargs = {
+      ...(body.chat_template_kwargs as Record<string, unknown> | undefined ?? {}),
+      enable_thinking: false,
+    };
   }
 
   const startTime = Date.now();
