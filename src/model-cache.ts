@@ -94,6 +94,15 @@ const PROMPT_HINTS: { pattern: RegExp; hints: PromptHints }[] = [
     },
   },
   {
+    pattern: /gemma[- ]?4/i,
+    hints: {
+      codeTemp: 0.1,
+      chatTemp: 0.3,
+      outputConstraint: 'Be direct. Output only what was asked for. Use markdown formatting: bullet points for lists, fenced code blocks for code. No preamble.',
+      bestTaskTypes: ['code', 'chat', 'analysis'],
+    },
+  },
+  {
     pattern: /qwen3.*coder|qwen.*coder/i,
     hints: {
       codeTemp: 0.1,
