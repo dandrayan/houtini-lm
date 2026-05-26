@@ -1,0 +1,12 @@
+/home/ddautrich/development/houtini-lm/test/fixtures/threshold-project/bin/Debug/net10.0/ThresholdProject.deps.json
+/home/ddautrich/development/houtini-lm/test/fixtures/threshold-project/bin/Debug/net10.0/ThresholdProject.dll
+/home/ddautrich/development/houtini-lm/test/fixtures/threshold-project/bin/Debug/net10.0/ThresholdProject.pdb
+/home/ddautrich/development/houtini-lm/test/fixtures/threshold-project/obj/Debug/net10.0/ThresholdProject.GeneratedMSBuildEditorConfig.editorconfig
+/home/ddautrich/development/houtini-lm/test/fixtures/threshold-project/obj/Debug/net10.0/ThresholdProject.AssemblyInfoInputs.cache
+/home/ddautrich/development/houtini-lm/test/fixtures/threshold-project/obj/Debug/net10.0/ThresholdProject.AssemblyInfo.cs
+/home/ddautrich/development/houtini-lm/test/fixtures/threshold-project/obj/Debug/net10.0/ThresholdProject.csproj.CoreCompileInputs.cache
+/home/ddautrich/development/houtini-lm/test/fixtures/threshold-project/obj/Debug/net10.0/ThresholdProject.sourcelink.json
+/home/ddautrich/development/houtini-lm/test/fixtures/threshold-project/obj/Debug/net10.0/ThresholdProject.dll
+/home/ddautrich/development/houtini-lm/test/fixtures/threshold-project/obj/Debug/net10.0/refint/ThresholdProject.dll
+/home/ddautrich/development/houtini-lm/test/fixtures/threshold-project/obj/Debug/net10.0/ThresholdProject.pdb
+/home/ddautrich/development/houtini-lm/test/fixtures/threshold-project/obj/Debug/net10.0/ref/ThresholdProject.dll

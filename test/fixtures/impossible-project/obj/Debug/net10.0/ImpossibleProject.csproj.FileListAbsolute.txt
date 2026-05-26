@@ -1,0 +1,12 @@
+/home/ddautrich/development/houtini-lm/test/fixtures/impossible-project/bin/Debug/net10.0/ImpossibleProject.deps.json
+/home/ddautrich/development/houtini-lm/test/fixtures/impossible-project/bin/Debug/net10.0/ImpossibleProject.dll
+/home/ddautrich/development/houtini-lm/test/fixtures/impossible-project/bin/Debug/net10.0/ImpossibleProject.pdb
+/home/ddautrich/development/houtini-lm/test/fixtures/impossible-project/obj/Debug/net10.0/ImpossibleProject.GeneratedMSBuildEditorConfig.editorconfig
+/home/ddautrich/development/houtini-lm/test/fixtures/impossible-project/obj/Debug/net10.0/ImpossibleProject.AssemblyInfoInputs.cache
+/home/ddautrich/development/houtini-lm/test/fixtures/impossible-project/obj/Debug/net10.0/ImpossibleProject.AssemblyInfo.cs
+/home/ddautrich/development/houtini-lm/test/fixtures/impossible-project/obj/Debug/net10.0/ImpossibleProject.csproj.CoreCompileInputs.cache
+/home/ddautrich/development/houtini-lm/test/fixtures/impossible-project/obj/Debug/net10.0/ImpossibleProject.sourcelink.json
+/home/ddautrich/development/houtini-lm/test/fixtures/impossible-project/obj/Debug/net10.0/ImpossibleProject.dll
+/home/ddautrich/development/houtini-lm/test/fixtures/impossible-project/obj/Debug/net10.0/refint/ImpossibleProject.dll
+/home/ddautrich/development/houtini-lm/test/fixtures/impossible-project/obj/Debug/net10.0/ImpossibleProject.pdb
+/home/ddautrich/development/houtini-lm/test/fixtures/impossible-project/obj/Debug/net10.0/ref/ImpossibleProject.dll
