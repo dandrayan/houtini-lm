@@ -1,0 +1,12 @@
+/home/ddautrich/development/houtini-lm/test/fixtures/retry-project/bin/Debug/net10.0/RetryProject.deps.json
+/home/ddautrich/development/houtini-lm/test/fixtures/retry-project/bin/Debug/net10.0/RetryProject.dll
+/home/ddautrich/development/houtini-lm/test/fixtures/retry-project/bin/Debug/net10.0/RetryProject.pdb
+/home/ddautrich/development/houtini-lm/test/fixtures/retry-project/obj/Debug/net10.0/RetryProject.GeneratedMSBuildEditorConfig.editorconfig
+/home/ddautrich/development/houtini-lm/test/fixtures/retry-project/obj/Debug/net10.0/RetryProject.AssemblyInfoInputs.cache
+/home/ddautrich/development/houtini-lm/test/fixtures/retry-project/obj/Debug/net10.0/RetryProject.AssemblyInfo.cs
+/home/ddautrich/development/houtini-lm/test/fixtures/retry-project/obj/Debug/net10.0/RetryProject.csproj.CoreCompileInputs.cache
+/home/ddautrich/development/houtini-lm/test/fixtures/retry-project/obj/Debug/net10.0/RetryProject.sourcelink.json
+/home/ddautrich/development/houtini-lm/test/fixtures/retry-project/obj/Debug/net10.0/RetryProject.dll
+/home/ddautrich/development/houtini-lm/test/fixtures/retry-project/obj/Debug/net10.0/refint/RetryProject.dll
+/home/ddautrich/development/houtini-lm/test/fixtures/retry-project/obj/Debug/net10.0/RetryProject.pdb
+/home/ddautrich/development/houtini-lm/test/fixtures/retry-project/obj/Debug/net10.0/ref/RetryProject.dll

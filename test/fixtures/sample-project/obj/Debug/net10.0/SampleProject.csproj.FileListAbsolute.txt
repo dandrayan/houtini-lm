@@ -1,0 +1,12 @@
+/home/ddautrich/development/houtini-lm/test/fixtures/sample-project/obj/Debug/net10.0/SampleProject.GeneratedMSBuildEditorConfig.editorconfig
+/home/ddautrich/development/houtini-lm/test/fixtures/sample-project/bin/Debug/net10.0/SampleProject.deps.json
+/home/ddautrich/development/houtini-lm/test/fixtures/sample-project/bin/Debug/net10.0/SampleProject.dll
+/home/ddautrich/development/houtini-lm/test/fixtures/sample-project/bin/Debug/net10.0/SampleProject.pdb
+/home/ddautrich/development/houtini-lm/test/fixtures/sample-project/obj/Debug/net10.0/SampleProject.AssemblyInfoInputs.cache
+/home/ddautrich/development/houtini-lm/test/fixtures/sample-project/obj/Debug/net10.0/SampleProject.AssemblyInfo.cs
+/home/ddautrich/development/houtini-lm/test/fixtures/sample-project/obj/Debug/net10.0/SampleProject.csproj.CoreCompileInputs.cache
+/home/ddautrich/development/houtini-lm/test/fixtures/sample-project/obj/Debug/net10.0/SampleProject.sourcelink.json
+/home/ddautrich/development/houtini-lm/test/fixtures/sample-project/obj/Debug/net10.0/SampleProject.dll
+/home/ddautrich/development/houtini-lm/test/fixtures/sample-project/obj/Debug/net10.0/refint/SampleProject.dll
+/home/ddautrich/development/houtini-lm/test/fixtures/sample-project/obj/Debug/net10.0/SampleProject.pdb
+/home/ddautrich/development/houtini-lm/test/fixtures/sample-project/obj/Debug/net10.0/ref/SampleProject.dll
